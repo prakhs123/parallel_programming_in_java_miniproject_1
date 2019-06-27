@@ -100,7 +100,6 @@ public final class ReciprocalArraySum {
         /**
          * Intermediate value produced by this task.
          */
-        private final int nChunks;
         private double value;
 
         /**
@@ -111,9 +110,7 @@ public final class ReciprocalArraySum {
          * @param setInput Input values
          */
         ReciprocalArraySumTask(final int setStartIndexInclusive,
-                final int setEndIndexExclusive, final double[] setInput,
-                               final int nChunks) {
-            this.nChunks = nChunks;
+                final int setEndIndexExclusive, final double[] setInput) {
             this.startIndexInclusive = setStartIndexInclusive;
             this.endIndexExclusive = setEndIndexExclusive;
             this.input = setInput;
@@ -138,25 +135,15 @@ public final class ReciprocalArraySum {
                 this.value = sum;
                 return;
             }
-            ReciprocalArraySumTask[] tasks = new ReciprocalArraySumTask[nChunks];
-            for (int i = 0; i < nChunks; i++) {
-                int startIndex = startIndexInclusive +
-                        getChunkStartInclusive(i, nChunks, endIndexExclusive-startIndexInclusive);
-                int endIndex = startIndexInclusive +
-                        getChunkEndExclusive(i, nChunks, endIndexExclusive-startIndexInclusive);
-                tasks[i] = new ReciprocalArraySumTask(startIndex, endIndex, input, nChunks);
-            }
-            for (int i = 0; i < nChunks-1; i++) {
-                tasks[i].fork();
-            }
-            tasks[nChunks-1].compute();
-            for (int i = 0; i < nChunks-1; i++) {
-                tasks[i].join();
-            }
-            for (int i = 0; i < nChunks; i++) {
-                sum += tasks[i].value;
-            }
-            this.value = sum;
+            int mid = startIndexInclusive + (endIndexExclusive-startIndexInclusive)/2;
+            ReciprocalArraySumTask L =
+                    new ReciprocalArraySumTask(startIndexInclusive, mid, input);
+            ReciprocalArraySumTask R =
+                    new ReciprocalArraySumTask(mid, endIndexExclusive, input);
+            L.fork();
+            R.compute();
+            L.join();
+            this.value = L.value + R.value;
         }
     }
 
@@ -173,7 +160,7 @@ public final class ReciprocalArraySum {
         assert input.length % 2 == 0;
 
 
-        ReciprocalArraySumTask task = new ReciprocalArraySumTask(0, input.length, input, 2);
+        ReciprocalArraySumTask task = new ReciprocalArraySumTask(0, input.length, input);
         ForkJoinPool.commonPool().invoke(task);
 
         return task.value;
@@ -191,12 +178,24 @@ public final class ReciprocalArraySum {
      */
     protected static double parManyTaskArraySum(final double[] input,
             final int numTasks) {
-        int nChunks = numTasks;
-        // just to increase parallelism so that speed up reaches 3.2x for 4 cores
-        if (numTasks == 4)
-            nChunks =  numTasks * 2;
-        ReciprocalArraySumTask task = new ReciprocalArraySumTask(0, input.length, input, nChunks);
-        ForkJoinPool.commonPool().invoke(task);
-        return task.value;
+        double sum = 0;
+        ReciprocalArraySumTask[] tasks = new ReciprocalArraySumTask[numTasks];
+        for (int i = 0; i < numTasks; i++) {
+            int startIndex = getChunkStartInclusive(i, numTasks, input.length);
+            int endIndex = getChunkEndExclusive(i, numTasks, input.length);
+            tasks[i] = new ReciprocalArraySumTask(startIndex, endIndex, input);
+        }
+        for (int i = 0; i < numTasks-1; i++) {
+            tasks[i].fork();
+        }
+        tasks[numTasks-1].compute();
+        for (int i = 0; i < numTasks-1; i++) {
+            tasks[i].join();
+        }
+        for (int i = 0; i < numTasks; i++) {
+            sum += tasks[i].value;
+        }
+
+        return sum;
     }
 }
